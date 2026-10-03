@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       const sheets = google.sheets({ version: 'v4', auth })
       const r = await sheets.spreadsheets.values.get({
         spreadsheetId: process.env.ITEM_SHEET_ID,
-        range: process.env.ITEM_RANGE || 'Item!A2:B', // kolom A = item code, B = item name (baris 1 = header)
+        range: process.env.ITEM_RANGE || 'A2:B', // A = item code, B = item name, baris 1 = header; tanpa nama tab = tab pertama
       })
       cache = {
         at: Date.now(),

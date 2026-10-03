@@ -1,0 +1,19 @@
+# Rahasia & konfigurasi lokal
+.env
+.env.*
+.env.example
+
+# File berisi kunci / URL script
+apps-script/Upload.gs
+supabase-photo-cleanup.sql
+supabase-delete.sql
+
+# Build & dependency
+node_modules/
+dist/
+package-lock.json
+
+# Lainnya
+.vercel
+.DS_Store
+*.log

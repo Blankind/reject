@@ -3,6 +3,15 @@ export const UPLOAD_KEY = import.meta.env.VITE_UPLOAD_KEY
 export const ITEM_CSV = import.meta.env.VITE_ITEM_CSV_URL
 
 export const thumb = (id) => `https://drive.google.com/thumbnail?id=${id}&sz=w200`
+export const thumbUrls = (id) => [
+  `https://lh3.googleusercontent.com/d/${id}=w200`,
+  `https://drive.google.com/thumbnail?id=${id}&sz=w200`,
+]
+export const fullUrls = (id) => [
+  `https://lh3.googleusercontent.com/d/${id}=w1600`,
+  `https://drive.google.com/thumbnail?id=${id}&sz=w1600`,
+]
+export const full = (id) => `https://drive.google.com/thumbnail?id=${id}&sz=w1600`
 export const view = (id) => `https://drive.google.com/file/d/${id}/view`
 
 const toBase64 = (blob) =>
@@ -22,6 +31,18 @@ export async function uploadPhoto(blob, name) {
   const j = await r.json()
   if (j.error) throw new Error(j.error)
   return j.id
+}
+
+export async function deletePhotos(ids) {
+  if (!ids || !ids.length) return 0
+  const r = await fetch(UPLOAD_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ key: UPLOAD_KEY, action: 'delete', ids }),
+  })
+  const j = await r.json()
+  if (j.error) throw new Error(j.error)
+  return j.deleted
 }
 
 export function parseCSV(text) {

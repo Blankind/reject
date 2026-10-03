@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import Dashboard from './Dashboard.jsx'
 import { uploadPhoto, loadItems } from './drive'
+import { WAREHOUSES } from './config'
 
-export const WAREHOUSES = ['Krembung', 'Lingtim', 'Lamongan', 'Bangil', 'Kombes']
 
 const compress = (file, max = 1280, q = 0.72) =>
   new Promise((res) => {

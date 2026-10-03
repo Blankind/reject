@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import Dashboard from './Dashboard.jsx'
 import { uploadPhoto, loadItems } from './drive'
 
-export const WAREHOUSES = ['WH-A', 'WH-B', 'WH-C'] // ← ganti sesuai nama warehouse
+export const WAREHOUSES = ['Krembung', 'Lingtim', 'Lamongan', 'Bangil', 'Kombes']
 
 const compress = (file, max = 1280, q = 0.72) =>
   new Promise((res) => {

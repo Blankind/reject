@@ -1,6 +1,6 @@
 // Script MANDIRI (bukan di dalam spreadsheet). Hanya menerima foto lalu menyimpannya ke Drive.
-const FOLDER_ID = 'ISI_ID_FOLDER_DRIVE';
-const SECRET = 'ISI_KUNCI_ACAK'; // harus sama dengan VITE_UPLOAD_KEY
+const FOLDER_ID = '1uQNl36poywwytAkPWHtdmnC6vpXQof-R';
+const SECRET = 'rj-8f3k29xq'; // harus sama dengan VITE_UPLOAD_KEY
 
 function doPost(e) {
   try {

@@ -4,7 +4,7 @@
 Jalankan supabase.sql. Kolom `photos` menyimpan array ID file Drive.
 
 ## 2. Google Cloud (sekali saja)
-1. console.cloud.google.com → project baru → enable **Google Drive API**.
+1. console.cloud.google.com → project baru → enable **Google Drive API** dan **Google Sheets API**.
 2. OAuth consent screen → External → isi nama app → **Publish app (In production)**.
    (Mode Testing: refresh token kedaluwarsa 7 hari.)
 3. Credentials → Create **OAuth client ID** → Web application →
@@ -20,3 +20,9 @@ cp .env.example .env  (isi semua)
 npm install
 npx vercel dev        # lokal (API + React)
 npx vercel --prod     # deploy; isi env di dashboard Vercel
+
+## 4. Item master (spreadsheet)
+- Sheet bernama `Item`: kolom A = item code, B = item name, baris 1 = header.
+- Spreadsheet milik akun yang sama dengan refresh token (tidak perlu dipublikasikan).
+- Isi `ITEM_SHEET_ID` (bagian antara /d/ dan /edit di URL) dan `ITEM_RANGE`.
+- Daftar warehouse: edit `WAREHOUSES` di `src/App.jsx`.

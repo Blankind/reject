@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
+import Dashboard from './Dashboard.jsx'
 
-const JENIS = ['Cacat Visual', 'Dimensi', 'Bocor', 'Kotor', 'Rusak', 'Lainnya']
-const today = () => new Date().toISOString().slice(0, 10)
-const empty = { tanggal: today(), shift: '1', line: '', produk: '', jenis: JENIS[0], qty: '', keterangan: '' }
+export const WAREHOUSES = ['WH-A', 'WH-B', 'WH-C'] // ← ganti sesuai nama warehouse
+const KEY = import.meta.env.VITE_UPLOAD_KEY
 
-// kompres gambar -> Blob JPEG (maks 1280px)
 const compress = (file, max = 1280, q = 0.72) =>
   new Promise((res) => {
     const img = new Image()
@@ -15,7 +14,7 @@ const compress = (file, max = 1280, q = 0.72) =>
       c.width = img.width * s
       c.height = img.height * s
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
-      c.toBlob((b) => res(b), 'image/jpeg', q)
+      c.toBlob(res, 'image/jpeg', q)
     }
     img.src = URL.createObjectURL(file)
   })
@@ -26,118 +25,152 @@ const toBase64 = (blob) =>
     r.onload = () => res(r.result.split(',')[1])
     r.readAsDataURL(blob)
   })
-const thumb = (id) => `https://drive.google.com/thumbnail?id=${id}&sz=w200`
-const view = (id) => `https://drive.google.com/file/d/${id}/view`
 
 export default function App() {
-  const [f, setF] = useState(empty)
-  const [photos, setPhotos] = useState([]) // [{blob, url}]
-  const [rows, setRows] = useState([])
+  const [tab, setTab] = useState('input')
+  return (
+    <div className="wrap">
+      <h1>Reject Management</h1>
+      <div className="sub">Input dan monitoring item reject</div>
+      <div className="tabs">
+        <button className={'tab ' + (tab === 'input' ? 'on' : '')} onClick={() => setTab('input')}>Input Reject</button>
+        <button className={'tab ' + (tab === 'dash' ? 'on' : '')} onClick={() => setTab('dash')}>Dashboard</button>
+      </div>
+      {tab === 'input' ? <InputForm /> : <Dashboard />}
+    </div>
+  )
+}
+
+function InputForm() {
+  const [items, setItems] = useState([])
+  const [wh, setWh] = useState('')
+  const [q, setQ] = useState('')
+  const [item, setItem] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [qty, setQty] = useState('')
+  const [ket, setKet] = useState('')
+  const [photos, setPhotos] = useState([])
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState('')
+  const [msg, setMsg] = useState(null)
   const fileRef = useRef()
 
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  useEffect(() => {
+    fetch('/api/items', { headers: { 'x-api-key': KEY } })
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d) ? setItems(d) : setMsg({ err: true, t: 'Gagal muat item master: ' + d.error }))
+      .catch(() => setMsg({ err: true, t: 'Gagal muat item master' }))
+  }, [])
 
-  const load = async () => {
-    const { data } = await supabase.from('rejects').select('*').order('id', { ascending: false }).limit(20)
-    setRows(data || [])
-  }
-  useEffect(() => { load() }, [])
+  const matches = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (!s) return []
+    return items.filter((i) => i.code.toLowerCase().includes(s) || i.name.toLowerCase().includes(s)).slice(0, 8)
+  }, [q, items])
 
   const addPhotos = async (e) => {
-    const items = await Promise.all(
-      [...e.target.files].map(async (file) => {
-        const blob = await compress(file)
-        return { blob, url: URL.createObjectURL(blob) }
-      })
-    )
-    setPhotos((p) => [...p, ...items])
+    const add = await Promise.all([...e.target.files].map(async (f) => {
+      const blob = await compress(f)
+      return { blob, url: URL.createObjectURL(blob) }
+    }))
+    setPhotos((p) => [...p, ...add]) // akumulasi, bisa pilih berkali-kali
     e.target.value = ''
   }
 
-  const submit = async () => {
-    if (!f.line || !f.produk || !f.qty) return setMsg('Line, produk, qty wajib diisi.')
+  const reset = () => {
+    setWh(''); setQ(''); setItem(null); setQty(''); setKet(''); setPhotos([]); setMsg(null)
+  }
+
+  const save = async () => {
+    if (!wh) return setMsg({ err: true, t: 'Pilih warehouse.' })
+    if (!item) return setMsg({ err: true, t: 'Pilih item code dari daftar.' })
+    if (!(Number(qty) > 0)) return setMsg({ err: true, t: 'Qty reject harus lebih dari 0.' })
     setBusy(true)
-    setMsg('Menyimpan...')
     try {
-      const urls = []
+      const ids = []
       for (let i = 0; i < photos.length; i++) {
-        setMsg(`Upload foto ${i + 1}/${photos.length}...`)
+        setMsg({ t: `Upload foto ${i + 1}/${photos.length}...` })
         const r = await fetch('/api/upload', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': import.meta.env.VITE_UPLOAD_KEY },
-          body: JSON.stringify({ name: `${f.tanggal}_${f.line}_${Date.now()}_${i + 1}.jpg`, data: await toBase64(photos[i].blob) }),
+          headers: { 'Content-Type': 'application/json', 'x-api-key': KEY },
+          body: JSON.stringify({ name: `${wh}_${item.code}_${Date.now()}_${i + 1}.jpg`, data: await toBase64(photos[i].blob) }),
         })
         const j = await r.json()
         if (!r.ok) throw new Error(j.error)
-        urls.push(j.id)
+        ids.push(j.id)
       }
       const { error } = await supabase.from('rejects').insert({
-        ...f, qty: Number(f.qty), photos: urls,
+        warehouse: wh, item_code: item.code, item_name: item.name,
+        qty: Number(qty), keterangan: ket.trim() || null, photos: ids,
       })
       if (error) throw error
-      setMsg(`✓ Tersimpan (${urls.length} foto)`)
-      setF({ ...empty, tanggal: f.tanggal, shift: f.shift, line: f.line })
-      setPhotos([])
-      load()
-    } catch (err) {
-      setMsg('Gagal: ' + err.message)
+      reset()
+      setMsg({ t: `✓ Reject tersimpan (${ids.length} foto)` })
+    } catch (e) {
+      setMsg({ err: true, t: 'Gagal: ' + e.message })
     }
     setBusy(false)
   }
 
   return (
-    <div className="wrap">
-      <h1>Reject Management</h1>
-      <div className="card">
-        <div className="row">
-          <div><label>Tanggal</label><input type="date" value={f.tanggal} onChange={set('tanggal')} /></div>
-          <div><label>Shift</label>
-            <select value={f.shift} onChange={set('shift')}>
-              <option>1</option><option>2</option><option>3</option>
-            </select></div>
+    <div className="card">
+      <div className="g2">
+        <div>
+          <label>Warehouse</label>
+          <select value={wh} onChange={(e) => setWh(e.target.value)}>
+            <option value="">-- Pilih Warehouse --</option>
+            {WAREHOUSES.map((w) => <option key={w}>{w}</option>)}
+          </select>
         </div>
-        <label>Line / Mesin</label><input value={f.line} onChange={set('line')} />
-        <label>Produk</label><input value={f.produk} onChange={set('produk')} />
-        <div className="row">
-          <div><label>Jenis Reject</label>
-            <select value={f.jenis} onChange={set('jenis')}>{JENIS.map((j) => <option key={j}>{j}</option>)}</select></div>
-          <div><label>Qty</label><input type="number" min="1" inputMode="numeric" value={f.qty} onChange={set('qty')} /></div>
-        </div>
-        <label>Keterangan</label><textarea rows="3" value={f.keterangan} onChange={set('keterangan')} />
-
-        <label>Foto (bisa banyak)</label>
-        <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={addPhotos} />
-        <button type="button" className="add" onClick={() => fileRef.current.click()}>+ Tambah Foto</button>
-        <div className="prev">
-          {photos.map((p, i) => (
-            <div className="th" key={i}>
-              <img src={p.url} />
-              <b onClick={() => setPhotos(photos.filter((_, j) => j !== i))}>×</b>
+        <div className="ac">
+          <label>Item Code</label>
+          <input
+            value={q} placeholder="Ketik item code..."
+            onChange={(e) => { setQ(e.target.value); setItem(null); setOpen(true) }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+          />
+          {open && matches.length > 0 && (
+            <div className="list">
+              {matches.map((m) => (
+                <div key={m.code} onMouseDown={() => { setItem(m); setQ(m.code); setOpen(false) }}>
+                  <b>{m.code}</b> <small>{m.name}</small>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-
-        <button disabled={busy} onClick={submit}>Simpan</button>
-        <div className="msg">{msg}</div>
       </div>
 
-      <div className="card">
-        <b>20 input terakhir</b>
-        <table>
-          <thead><tr><th>Tgl</th><th>Line</th><th>Produk</th><th>Jenis</th><th>Qty</th><th>Foto</th></tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td>{r.tanggal}</td><td>{r.line}</td><td>{r.produk}</td><td>{r.jenis}</td><td>{r.qty}</td>
-                <td><div className="pics">{(r.photos || []).map((u) => (
-                  <a key={u} href={view(u)} target="_blank"><img src={thumb(u)} /></a>))}</div></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <label>Item Name</label>
+      <input readOnly value={item ? item.name : ''} placeholder="Pilih Item Code" />
+
+      <div className="g2">
+        <div><label>Qty Reject</label>
+          <input type="number" min="1" inputMode="numeric" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
+        <div><label>Keterangan</label>
+          <input placeholder="Keterangan reject" value={ket} onChange={(e) => setKet(e.target.value)} /></div>
       </div>
+
+      <label>Foto Reject</label>
+      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={addPhotos} />
+      <div className="drop" onClick={() => fileRef.current.click()}>
+        Klik untuk memilih foto
+        <small>Bisa lebih dari 1 foto · Foto akan dikompres otomatis</small>
+      </div>
+      <div className="prev">
+        {photos.map((p, i) => (
+          <div className="th" key={i}>
+            <img src={p.url} />
+            <b onClick={() => setPhotos(photos.filter((_, j) => j !== i))}>×</b>
+          </div>
+        ))}
+      </div>
+
+      <div className="btns">
+        <button className="btn dark" disabled={busy} onClick={save}>Simpan Reject</button>
+        <button className="btn" disabled={busy} onClick={reset}>Reset</button>
+      </div>
+      {msg && <div className={'msg ' + (msg.err ? 'err' : 'ok')}>{msg.t}</div>}
     </div>
   )
 }

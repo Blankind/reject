@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import Dashboard from './Dashboard.jsx'
+import { uploadPhoto, loadItems } from './drive'
 
 export const WAREHOUSES = ['WH-A', 'WH-B', 'WH-C'] // ← ganti sesuai nama warehouse
-const KEY = import.meta.env.VITE_UPLOAD_KEY
 
 const compress = (file, max = 1280, q = 0.72) =>
   new Promise((res) => {
@@ -17,13 +17,6 @@ const compress = (file, max = 1280, q = 0.72) =>
       c.toBlob(res, 'image/jpeg', q)
     }
     img.src = URL.createObjectURL(file)
-  })
-
-const toBase64 = (blob) =>
-  new Promise((res) => {
-    const r = new FileReader()
-    r.onload = () => res(r.result.split(',')[1])
-    r.readAsDataURL(blob)
   })
 
 export default function App() {
@@ -55,10 +48,7 @@ function InputForm() {
   const fileRef = useRef()
 
   useEffect(() => {
-    fetch('/api/items', { headers: { 'x-api-key': KEY } })
-      .then((r) => r.json())
-      .then((d) => Array.isArray(d) ? setItems(d) : setMsg({ err: true, t: 'Gagal muat item master: ' + d.error }))
-      .catch(() => setMsg({ err: true, t: 'Gagal muat item master' }))
+    loadItems().then(setItems).catch(() => setMsg({ err: true, t: 'Gagal muat item master (cek link CSV)' }))
   }, [])
 
   const matches = useMemo(() => {
@@ -89,14 +79,7 @@ function InputForm() {
       const ids = []
       for (let i = 0; i < photos.length; i++) {
         setMsg({ t: `Upload foto ${i + 1}/${photos.length}...` })
-        const r = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': KEY },
-          body: JSON.stringify({ name: `${wh}_${item.code}_${Date.now()}_${i + 1}.jpg`, data: await toBase64(photos[i].blob) }),
-        })
-        const j = await r.json()
-        if (!r.ok) throw new Error(j.error)
-        ids.push(j.id)
+        ids.push(await uploadPhoto(photos[i].blob, `${wh}_${item.code}_${Date.now()}_${i + 1}.jpg`))
       }
       const { error } = await supabase.from('rejects').insert({
         warehouse: wh, item_code: item.code, item_name: item.name,

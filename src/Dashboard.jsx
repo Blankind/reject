@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
+import { thumb, view } from './drive'
 
-const thumb = (id) => `https://drive.google.com/thumbnail?id=${id}&sz=w200`
-const view = (id) => `https://drive.google.com/file/d/${id}/view`
 const iso = (d) => d.toISOString().slice(0, 10)
 const fmt = (s) => new Date(s).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'short', timeStyle: 'short' })
 

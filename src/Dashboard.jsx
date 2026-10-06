@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
-import { thumbUrls, fullUrls, deletePhotos } from './drive'
-import { WAREHOUSES } from './config'
+import { thumbUrls, fullUrls, deletePhotos, loadMaster } from './drive'
+import { WAREHOUSES, TINDAKAN } from './config'
 
 function Img({ urls, className, ...rest }) {
   const [k, setK] = useState(0)
   if (k >= urls.length) return <span className={'noimg ' + (className || '')} title="Foto tidak bisa dimuat">!</span>
   return <img src={urls[k]} className={className} referrerPolicy="no-referrer" loading="lazy" onError={() => setK(k + 1)} {...rest} />
 }
+
+const splitT = (s) => (s || '').split(/\s*[,;]\s*/).map((x) => x.trim()).filter(Boolean)
 
 const iso = (d) => d.toISOString().slice(0, 10)
 const fmt = (s) => new Date(s).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'short', timeStyle: 'short' })
@@ -20,10 +22,41 @@ export default function Dashboard() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [box, setBox] = useState(null) // { ids, i } -> popup foto
+  const [opts, setOpts] = useState(TINDAKAN) // daftar tindakan: dari spreadsheet (kolom paling belakang), cadangan config.js
+  const [tf, setTf] = useState('') // filter tindakan
+  const [tin, setTin] = useState(null) // { id, label }
+  const [tinSel, setTinSel] = useState([]) // opsi tercentang (boleh lebih dari 1)
+  const [tinOther, setTinOther] = useState('')
+  const [tinPin, setTinPin] = useState('')
+  const [tinErr, setTinErr] = useState('')
+  const [tinBusy, setTinBusy] = useState(false)
   const [del, setDel] = useState(null) // { id, label }
   const [pin, setPin] = useState('')
   const [delErr, setDelErr] = useState('')
   const [delBusy, setDelBusy] = useState(false)
+
+  const openTin = (r) => {
+    const toks = splitT(r.tindakan)
+    const sel = [], other = []
+    toks.forEach((t) => {
+      const m = opts.find((o) => o.toLowerCase() === t.toLowerCase())
+      m ? sel.push(m) : other.push(t)
+    })
+    setTin({ id: r.id, label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` })
+    setTinSel(sel); setTinOther(other.join(', '))
+    setTinPin(''); setTinErr('')
+  }
+
+  const toggleSel = (o) => setTinSel((s) => (s.includes(o) ? s.filter((x) => x !== o) : [...s, o]))
+
+  const saveTin = async () => {
+    const val = [...tinSel, ...splitT(tinOther)].join(', ')
+    setTinBusy(true); setTinErr('')
+    const { error } = await supabase.rpc('set_tindakan', { p_id: tin.id, p_tindakan: val, p_pin: tinPin })
+    setTinBusy(false)
+    if (error) return setTinErr(error.message.includes('PIN') ? 'PIN salah' : error.message)
+    setTin(null); setTinPin(''); load()
+  }
 
   const doDelete = async () => {
     setDelBusy(true); setDelErr('')
@@ -48,6 +81,7 @@ export default function Dashboard() {
     setLoading(false)
   }
   useEffect(() => { load() }, [from, to, wh])
+  useEffect(() => { loadMaster().then((m) => m.tindakan.length && setOpts(m.tindakan)).catch(() => {}) }, [])
 
   useEffect(() => {
     if (!box) return
@@ -61,10 +95,16 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', onKey)
   }, [box])
 
+  const shown = useMemo(() => {
+    if (!tf) return rows
+    if (tf === '__none') return rows.filter((r) => !r.tindakan)
+    return rows.filter((r) => splitT(r.tindakan).some((t) => t.toLowerCase() === tf.toLowerCase()))
+  }, [rows, tf])
+
   const { total, items, byWh, byItem } = useMemo(() => {
     const w = {}, i = {}
     let t = 0
-    rows.forEach((r) => {
+    shown.forEach((r) => {
       t += r.qty
       w[r.warehouse] = (w[r.warehouse] || 0) + r.qty
       i[r.item_code] = i[r.item_code] || { code: r.item_code, name: r.item_name, qty: 0 }
@@ -72,12 +112,12 @@ export default function Dashboard() {
     })
     const list = Object.values(i).sort((a, b) => b.qty - a.qty)
     return { total: t, items: list.length, byWh: Object.entries(w).sort((a, b) => b[1] - a[1]), byItem: list.slice(0, 10) }
-  }, [rows])
+  }, [shown])
 
   return (
     <>
       <div className="card">
-        <div className="g3">
+        <div className="g4">
           <div><label>Dari</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div><label>Sampai</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <div><label>Warehouse</label>
@@ -85,11 +125,18 @@ export default function Dashboard() {
               <option value="">Semua Warehouse</option>
               {WAREHOUSES.map((w) => <option key={w}>{w}</option>)}
             </select></div>
+          <div><label>Tindakan</label>
+            <select value={tf} onChange={(e) => setTf(e.target.value)}>
+              <option value="">Semua</option>
+              <option value="__none">Belum diisi</option>
+              {opts.map((t) => <option key={t}>{t}</option>)}
+            </select></div>
         </div>
         <div className="kpi" style={{ marginTop: 14 }}>
           <div><b>{total.toLocaleString('id-ID')}</b><span>Total Qty Reject</span></div>
-          <div><b>{rows.length}</b><span>Jumlah Input</span></div>
+          <div><b>{shown.length}</b><span>Jumlah Input</span></div>
           <div><b>{items}</b><span>Item Berbeda</span></div>
+          <div><b>{shown.filter((r) => !r.tindakan).length}</b><span>Belum Ditindak</span></div>
         </div>
       </div>
 
@@ -109,21 +156,44 @@ export default function Dashboard() {
       <div className="card scroll">
         <b>Riwayat {loading && '(memuat...)'}</b>
         <table>
-          <thead><tr><th>Waktu</th><th>WH</th><th>Item</th><th>Qty</th><th>Keterangan</th><th>Foto</th><th></th></tr></thead>
+          <thead><tr><th>Waktu</th><th>WH</th><th>Item</th><th>Qty</th><th>Keterangan</th><th>Tindakan</th><th>Foto</th><th></th></tr></thead>
           <tbody>
-            {rows.map((r) => (
+            {shown.map((r) => (
               <tr key={r.id}>
                 <td>{fmt(r.created_at)}</td><td>{r.warehouse}</td>
                 <td>{r.item_code}<br /><small>{r.item_name}</small></td>
                 <td>{r.qty}</td><td>{r.keterangan}</td>
+                <td>{r.tindakan ? splitT(r.tindakan).map((t) => <span key={t} className="chip">{t}</span>) : <span className="tag">Belum diisi</span>}</td>
                 <td><div className="pics">{r.photos.map((id, i) => (
                   <Img key={id} urls={thumbUrls(id)} onClick={() => setBox({ ids: r.photos, i })} />))}</div></td>
-                <td><button className="del" onClick={() => { setDel({ id: r.id, photos: r.photos, label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` }); setPin(''); setDelErr('') }}>Hapus</button></td>
+                <td><div className="acts"><button className="ed" onClick={() => openTin(r)}>Action</button><button className="del" onClick={() => { setDel({ id: r.id, photos: r.photos, label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` }); setPin(''); setDelErr('') }}>Hapus</button></div></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {tin && (
+        <div className="lb" onClick={() => setTin(null)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <b>Action · Instruksi tindakan (admin)</b>
+            <p>{tin.label}</p>
+            <div className="chk">
+              {opts.map((o) => (
+                <label key={o}><input type="checkbox" checked={tinSel.includes(o)} onChange={() => toggleSel(o)} /> {o}</label>
+              ))}
+            </div>
+            <input style={{ marginTop: 8 }} placeholder="Lainnya (opsional, pisahkan dengan koma)" value={tinOther} onChange={(e) => setTinOther(e.target.value)} />
+            <input style={{ marginTop: 8 }} type="password" placeholder="PIN admin" value={tinPin}
+              onChange={(e) => setTinPin(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && tinPin && saveTin()} />
+            {tinErr && <div className="msg err">{tinErr}</div>}
+            <div className="btns">
+              <button className="btn dark" disabled={tinBusy || !tinPin} onClick={saveTin}>Simpan</button>
+              <button className="btn" onClick={() => setTin(null)}>Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {del && (
         <div className="lb" onClick={() => setDel(null)}>

@@ -14,6 +14,13 @@ const splitT = (s) => (s || '').split(/\s*[,;]\s*/).map((x) => x.trim()).filter(
 const iso = (d) => d.toISOString().slice(0, 10)
 const fmt = (s) => new Date(s).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'short', timeStyle: 'short' })
 
+// 3 status checklist: label untuk modal konfirmasi + catatan khusus "ditarik" (auto pindah warehouse)
+const FLAG_META = {
+  stock_pindah: { label: 'Stock Dipindah (ERP)', note: 'Menandai stok reject ini sudah dipindahkan ke warehouse reject di ERP.' },
+  ditarik: { label: 'Sudah Ditarik', note: 'Mencentang: Warehouse otomatis pindah ke "Krembung". Batal centang: Warehouse dikembalikan ke semula.' },
+  erp_keluar: { label: 'Keluar dari ERP', note: 'Menandai item reject ini sudah dikeluarkan (write-off) dari ERP.' },
+}
+
 export default function Dashboard() {
   const now = new Date()
   const [from, setFrom] = useState(iso(new Date(now.getFullYear(), now.getMonth(), 1)))
@@ -34,6 +41,10 @@ export default function Dashboard() {
   const [pin, setPin] = useState('')
   const [delErr, setDelErr] = useState('')
   const [delBusy, setDelBusy] = useState(false)
+  const [flag, setFlag] = useState(null) // { id, type, value, label } -> modal centang status
+  const [flagPin, setFlagPin] = useState('')
+  const [flagErr, setFlagErr] = useState('')
+  const [flagBusy, setFlagBusy] = useState(false)
 
   const openTin = (r) => {
     const toks = splitT(r.tindakan)
@@ -67,6 +78,21 @@ export default function Dashboard() {
     try { await deletePhotos(del.photos) } catch { fotoGagal = true }
     setDel(null); setPin(''); load()
     if (fotoGagal) alert('Data terhapus, tapi foto di Drive gagal dihapus. Hapus manual di folder Reject Foto.')
+  }
+
+  const openFlag = (r, type) => {
+    setFlag({ id: r.id, type, value: !r[type], label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` })
+    setFlagPin(''); setFlagErr('')
+  }
+
+  const doFlag = async () => {
+    setFlagBusy(true); setFlagErr('')
+    const { error } = await supabase.rpc('set_reject_flag', {
+      p_id: flag.id, p_flag: flag.type, p_value: flag.value, p_pin: flagPin,
+    })
+    setFlagBusy(false)
+    if (error) return setFlagErr(error.message.includes('PIN') ? 'PIN salah' : error.message)
+    setFlag(null); setFlagPin(''); load()
   }
 
   const load = async () => {
@@ -156,7 +182,11 @@ export default function Dashboard() {
       <div className="card scroll">
         <b>Riwayat {loading && '(memuat...)'}</b>
         <table>
-          <thead><tr><th>Waktu</th><th>WH</th><th>Item</th><th>Qty</th><th>Keterangan</th><th>Tindakan</th><th>Foto</th><th></th></tr></thead>
+          <thead><tr><th>Waktu</th><th>WH</th><th>Item</th><th>Qty</th><th>Keterangan</th><th>Tindakan</th><th>Foto</th>
+            <th title={FLAG_META.stock_pindah.note}>Stock ERP</th>
+            <th title={FLAG_META.ditarik.note}>Ditarik</th>
+            <th title={FLAG_META.erp_keluar.note}>Keluar ERP</th>
+            <th></th></tr></thead>
           <tbody>
             {shown.map((r) => (
               <tr key={r.id}>
@@ -166,6 +196,15 @@ export default function Dashboard() {
                 <td>{r.tindakan ? splitT(r.tindakan).map((t) => <span key={t} className="chip">{t}</span>) : <span className="tag">Belum diisi</span>}</td>
                 <td><div className="pics">{r.photos.map((id, i) => (
                   <Img key={id} urls={thumbUrls(id)} onClick={() => setBox({ ids: r.photos, i })} />))}</div></td>
+                <td style={{ textAlign: 'center' }}>
+                  <input type="checkbox" checked={!!r.stock_pindah} title={r.stock_pindah_at ? fmt(r.stock_pindah_at) : ''} onChange={() => openFlag(r, 'stock_pindah')} />
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <input type="checkbox" checked={!!r.ditarik} title={r.ditarik_at ? fmt(r.ditarik_at) : ''} onChange={() => openFlag(r, 'ditarik')} />
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <input type="checkbox" checked={!!r.erp_keluar} title={r.erp_keluar_at ? fmt(r.erp_keluar_at) : ''} onChange={() => openFlag(r, 'erp_keluar')} />
+                </td>
                 <td><div className="acts"><button className="ed" onClick={() => openTin(r)}>Action</button><button className="del" onClick={() => { setDel({ id: r.id, photos: r.photos, label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` }); setPin(''); setDelErr('') }}>Hapus</button></div></td>
               </tr>
             ))}
@@ -207,6 +246,23 @@ export default function Dashboard() {
             <div className="btns">
               <button className="btn dark" disabled={delBusy || !pin} onClick={doDelete}>Hapus</button>
               <button className="btn" onClick={() => setDel(null)}>Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {flag && (
+        <div className="lb" onClick={() => setFlag(null)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <b>{FLAG_META[flag.type].label} · {flag.value ? 'Tandai' : 'Batalkan tanda'}</b>
+            <p>{flag.label}</p>
+            <small style={{ color: '#888' }}>{FLAG_META[flag.type].note}</small>
+            <input style={{ marginTop: 8 }} type="password" placeholder="PIN admin" value={flagPin} autoFocus
+              onChange={(e) => setFlagPin(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && flagPin && doFlag()} />
+            {flagErr && <div className="msg err">{flagErr}</div>}
+            <div className="btns">
+              <button className="btn dark" disabled={flagBusy || !flagPin} onClick={doFlag}>{flag.value ? 'Tandai' : 'Batalkan'}</button>
+              <button className="btn" onClick={() => setFlag(null)}>Batal</button>
             </div>
           </div>
         </div>

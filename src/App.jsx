@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import Dashboard from './Dashboard.jsx'
 import { uploadPhoto, loadItems } from './drive'
 import { WAREHOUSES } from './config'
+import DecimalInput from './DecimalInput'
 
 
 const compress = (file, max = 1280, q = 0.72) =>
@@ -40,7 +41,7 @@ function InputForm() {
   const [q, setQ] = useState('')
   const [item, setItem] = useState(null)
   const [open, setOpen] = useState(false)
-  const [qty, setQty] = useState('')
+  const [qty, setQty] = useState(null) // number | null (desimal didukung)
   const [ket, setKet] = useState('')
   const [photos, setPhotos] = useState([])
   const [busy, setBusy] = useState(false)
@@ -67,13 +68,13 @@ function InputForm() {
   }
 
   const reset = () => {
-    setWh(''); setQ(''); setItem(null); setQty(''); setKet(''); setPhotos([]); setMsg(null)
+    setWh(''); setQ(''); setItem(null); setQty(null); setKet(''); setPhotos([]); setMsg(null)
   }
 
   const save = async () => {
     if (!wh) return setMsg({ err: true, t: 'Pilih warehouse.' })
     if (!item) return setMsg({ err: true, t: 'Pilih item code dari daftar.' })
-    if (!(Number(qty) > 0)) return setMsg({ err: true, t: 'Qty reject harus lebih dari 0.' })
+    if (!(qty > 0)) return setMsg({ err: true, t: 'Qty reject harus lebih dari 0.' })
     setBusy(true)
     try {
       const ids = []
@@ -83,7 +84,7 @@ function InputForm() {
       }
       const { error } = await supabase.from('rejects').insert({
         warehouse: wh, item_code: item.code, item_name: item.name,
-        qty: Number(qty), keterangan: ket.trim() || null, photos: ids,
+        qty, keterangan: ket.trim() || null, photos: ids,
       })
       if (error) throw error
       reset()
@@ -129,7 +130,7 @@ function InputForm() {
 
       <div className="g2">
         <div><label>Qty Reject</label>
-          <input type="number" min="1" inputMode="numeric" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
+          <DecimalInput placeholder="0" value={qty} onChange={setQty} /></div>
         <div><label>Keterangan</label>
           <input placeholder="Keterangan reject" value={ket} onChange={(e) => setKet(e.target.value)} /></div>
       </div>

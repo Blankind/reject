@@ -50,15 +50,14 @@ export default function Dashboard() {
   const [flagPin, setFlagPin] = useState('')
   const [flagErr, setFlagErr] = useState('')
   const [flagBusy, setFlagBusy] = useState(false)
-  const [exMode, setExMode] = useState('nophoto') // 'nophoto' | 'photo'
   const [exBusy, setExBusy] = useState(false)
   const [exMsg, setExMsg] = useState(null)
 
   const doExport = async () => {
     if (!shown.length) return setExMsg({ err: true, t: 'Tidak ada data untuk di-export.' })
-    setExBusy(true); setExMsg({ t: 'Mulai export...' })
+    setExBusy(true); setExMsg({ t: 'Membuat file Excel...' })
     try {
-      await exportRejects(shown, { withPhotos: exMode === 'photo', onProgress: (t) => setExMsg({ t }) })
+      await exportRejects(shown)
       setExMsg({ t: `✓ Export selesai (${shown.length} baris)` })
     } catch (e) {
       setExMsg({ err: true, t: 'Gagal export: ' + e.message })
@@ -187,12 +186,8 @@ export default function Dashboard() {
           <div><b>{shown.filter((r) => !r.tindakan).length}</b><span>Belum Ditindak</span></div>
         </div>
         <div className="exp">
-          <select value={exMode} onChange={(e) => setExMode(e.target.value)} disabled={exBusy}>
-            <option value="nophoto">Excel tanpa foto (link Drive)</option>
-            <option value="photo">Excel dengan foto (gambar di sel)</option>
-          </select>
           <button className="btn dark" disabled={exBusy || loading} onClick={doExport}>{exBusy ? 'Memproses...' : 'Export Excel'}</button>
-          <small>Sesuai filter di atas ({shown.length} baris)</small>
+          <small>Sesuai filter di atas ({shown.length} baris) · foto berupa link Drive</small>
         </div>
         {exMsg && <div className={'msg ' + (exMsg.err ? 'err' : 'ok')}>{exMsg.t}</div>}
       </div>
@@ -205,8 +200,10 @@ export default function Dashboard() {
         </div>
         <div className="card">
           <b>Top 10 Item Reject</b>
-          <table><thead><tr><th>Item</th><th>Qty</th></tr></thead>
-            <tbody>{byItem.map((r) => <tr key={r.code}><td>{r.code}<br /><small>{r.name}</small></td><td>{nf(r.qty)}</td></tr>)}</tbody></table>
+          <div className="top5">
+            <table><thead><tr><th>Item</th><th>Qty</th></tr></thead>
+              <tbody>{byItem.map((r) => <tr key={r.code}><td>{r.code}<br /><small>{r.name}</small></td><td>{nf(r.qty)}</td></tr>)}</tbody></table>
+          </div>
         </div>
       </div>
 

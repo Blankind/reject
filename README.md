@@ -18,3 +18,10 @@ Kolom A = item code, B = item name, baris 1 = header.
 ## 4. Jalankan
 cp .env.example .env  (isi 5 nilai) → npm install → npm run dev
 Deploy: Vercel/Netlify dengan 5 env yang sama. Warehouse: edit WAREHOUSES di src/App.jsx.
+
+## 5. Update database (jalankan sekali di Supabase SQL Editor)
+- supabase-qty-float.sql → qty boleh desimal (numeric).
+- supabase-tindakan.sql → kolom tindakan + PIN admin.
+
+## 6. Export Excel
+Dashboard → tombol Export Excel (mengikuti filter). Foto = link Drive, satu kolom per foto, tanpa batas jumlah foto per input.

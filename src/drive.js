@@ -44,11 +44,6 @@ export async function uploadPhoto(blob, name) {
   return (await callScript({ name, data: await toBase64(blob) })).id
 }
 
-// Ambil foto base64 lewat Apps Script (anti-CORS). Maks 20 id per panggilan.
-export async function fetchImages(ids, size = 400) {
-  return (await callScript({ action: 'images', ids, size })).images || {}
-}
-
 export async function deletePhotos(ids) {
   if (!ids || !ids.length) return 0
   return (await callScript({ action: 'delete', ids })).deleted

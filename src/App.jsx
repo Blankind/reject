@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import Dashboard from './Dashboard.jsx'
-import { uploadPhoto, loadItems } from './drive'
+import { uploadPhoto, loadItems, deletePhotos } from './drive'
 import { WAREHOUSES } from './config'
 import DecimalInput from './DecimalInput'
 
@@ -76,8 +76,8 @@ function InputForm() {
     if (!item) return setMsg({ err: true, t: 'Pilih item code dari daftar.' })
     if (!(qty > 0)) return setMsg({ err: true, t: 'Qty reject harus lebih dari 0.' })
     setBusy(true)
+    const ids = []
     try {
-      const ids = []
       for (let i = 0; i < photos.length; i++) {
         setMsg({ t: `Upload foto ${i + 1}/${photos.length}...` })
         ids.push(await uploadPhoto(photos[i].blob, `${wh}_${item.code}_${Date.now()}_${i + 1}.jpg`))
@@ -90,7 +90,15 @@ function InputForm() {
       reset()
       setMsg({ t: `✓ Reject tersimpan (${ids.length} foto)` })
     } catch (e) {
-      setMsg({ err: true, t: 'Gagal: ' + e.message })
+      // data gagal tersimpan -> foto yang sudah masuk Drive dibuang supaya tidak jadi yatim
+      let bersih = ''
+      if (ids.length) {
+        try { await deletePhotos(ids); bersih = ' Foto di Drive sudah dibatalkan.' } catch { bersih = ' Foto di Drive gagal dibatalkan (hapus manual).' }
+      }
+      const hint = /integer|22P02/i.test(e.message || '')
+        ? ' → Kolom qty di database masih int. Jalankan supabase-qty-float.sql di Supabase.'
+        : ''
+      setMsg({ err: true, t: 'DATA TIDAK TERSIMPAN: ' + e.message + hint + bersih })
     }
     setBusy(false)
   }

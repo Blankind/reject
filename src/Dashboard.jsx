@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { thumbUrls, fullUrls, deletePhotos, loadMaster } from './drive'
 import { WAREHOUSES, TINDAKAN } from './config'
+import { exportRejects } from './exportExcel'
+
+// qty desimal: buang noise float (0.1+0.2) & tampil maks 3 angka di belakang koma
+const r3 = (n) => Math.round(Number(n) * 1000) / 1000
+const nf = (n) => r3(n).toLocaleString('id-ID', { maximumFractionDigits: 3 })
 
 function Img({ urls, className, ...rest }) {
   const [k, setK] = useState(0)
@@ -45,6 +50,21 @@ export default function Dashboard() {
   const [flagPin, setFlagPin] = useState('')
   const [flagErr, setFlagErr] = useState('')
   const [flagBusy, setFlagBusy] = useState(false)
+  const [exMode, setExMode] = useState('nophoto') // 'nophoto' | 'photo'
+  const [exBusy, setExBusy] = useState(false)
+  const [exMsg, setExMsg] = useState(null)
+
+  const doExport = async () => {
+    if (!shown.length) return setExMsg({ err: true, t: 'Tidak ada data untuk di-export.' })
+    setExBusy(true); setExMsg({ t: 'Mulai export...' })
+    try {
+      await exportRejects(shown, { withPhotos: exMode === 'photo', onProgress: (t) => setExMsg({ t }) })
+      setExMsg({ t: `✓ Export selesai (${shown.length} baris)` })
+    } catch (e) {
+      setExMsg({ err: true, t: 'Gagal export: ' + e.message })
+    }
+    setExBusy(false)
+  }
 
   const openTin = (r) => {
     const toks = splitT(r.tindakan)
@@ -53,7 +73,7 @@ export default function Dashboard() {
       const m = opts.find((o) => o.toLowerCase() === t.toLowerCase())
       m ? sel.push(m) : other.push(t)
     })
-    setTin({ id: r.id, label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` })
+    setTin({ id: r.id, label: `${r.item_code} · ${nf(r.qty)} · ${fmt(r.created_at)}` })
     setTinSel(sel); setTinOther(other.join(', '))
     setTinPin(''); setTinErr('')
   }
@@ -81,7 +101,7 @@ export default function Dashboard() {
   }
 
   const openFlag = (r, type) => {
-    setFlag({ id: r.id, type, value: !r[type], label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` })
+    setFlag({ id: r.id, type, value: !r[type], label: `${r.item_code} · ${nf(r.qty)} · ${fmt(r.created_at)}` })
     setFlagPin(''); setFlagErr('')
   }
 
@@ -102,7 +122,8 @@ export default function Dashboard() {
       .lte('created_at', new Date(to + 'T23:59:59').toISOString())
       .order('created_at', { ascending: false }).limit(2000)
     if (wh) q = q.eq('warehouse', wh)
-    const { data } = await q
+    const { data, error } = await q
+    if (error) alert('Gagal memuat data: ' + error.message)
     setRows(data || [])
     setLoading(false)
   }
@@ -131,10 +152,11 @@ export default function Dashboard() {
     const w = {}, i = {}
     let t = 0
     shown.forEach((r) => {
-      t += r.qty
-      w[r.warehouse] = (w[r.warehouse] || 0) + r.qty
+      const qn = Number(r.qty)
+      t += qn
+      w[r.warehouse] = (w[r.warehouse] || 0) + qn
       i[r.item_code] = i[r.item_code] || { code: r.item_code, name: r.item_name, qty: 0 }
-      i[r.item_code].qty += r.qty
+      i[r.item_code].qty += qn
     })
     const list = Object.values(i).sort((a, b) => b.qty - a.qty)
     return { total: t, items: list.length, byWh: Object.entries(w).sort((a, b) => b[1] - a[1]), byItem: list.slice(0, 10) }
@@ -159,23 +181,32 @@ export default function Dashboard() {
             </select></div>
         </div>
         <div className="kpi" style={{ marginTop: 14 }}>
-          <div><b>{total.toLocaleString('id-ID')}</b><span>Total Qty Reject</span></div>
+          <div><b>{nf(total)}</b><span>Total Qty Reject</span></div>
           <div><b>{shown.length}</b><span>Jumlah Input</span></div>
           <div><b>{items}</b><span>Item Berbeda</span></div>
           <div><b>{shown.filter((r) => !r.tindakan).length}</b><span>Belum Ditindak</span></div>
         </div>
+        <div className="exp">
+          <select value={exMode} onChange={(e) => setExMode(e.target.value)} disabled={exBusy}>
+            <option value="nophoto">Excel tanpa foto (link Drive)</option>
+            <option value="photo">Excel dengan foto (gambar di sel)</option>
+          </select>
+          <button className="btn dark" disabled={exBusy || loading} onClick={doExport}>{exBusy ? 'Memproses...' : 'Export Excel'}</button>
+          <small>Sesuai filter di atas ({shown.length} baris)</small>
+        </div>
+        {exMsg && <div className={'msg ' + (exMsg.err ? 'err' : 'ok')}>{exMsg.t}</div>}
       </div>
 
       <div className="g2">
         <div className="card">
           <b>Per Warehouse</b>
           <table><thead><tr><th>Warehouse</th><th>Qty</th></tr></thead>
-            <tbody>{byWh.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table>
+            <tbody>{byWh.map(([k, v]) => <tr key={k}><td>{k}</td><td>{nf(v)}</td></tr>)}</tbody></table>
         </div>
         <div className="card">
           <b>Top 10 Item Reject</b>
           <table><thead><tr><th>Item</th><th>Qty</th></tr></thead>
-            <tbody>{byItem.map((r) => <tr key={r.code}><td>{r.code}<br /><small>{r.name}</small></td><td>{r.qty}</td></tr>)}</tbody></table>
+            <tbody>{byItem.map((r) => <tr key={r.code}><td>{r.code}<br /><small>{r.name}</small></td><td>{nf(r.qty)}</td></tr>)}</tbody></table>
         </div>
       </div>
 
@@ -192,7 +223,7 @@ export default function Dashboard() {
               <tr key={r.id}>
                 <td>{fmt(r.created_at)}</td><td>{r.warehouse}</td>
                 <td>{r.item_code}<br /><small>{r.item_name}</small></td>
-                <td>{r.qty}</td><td>{r.keterangan}</td>
+                <td>{nf(r.qty)}</td><td>{r.keterangan}</td>
                 <td>{r.tindakan ? splitT(r.tindakan).map((t) => <span key={t} className="chip">{t}</span>) : <span className="tag">Belum diisi</span>}</td>
                 <td><div className="pics">{r.photos.map((id, i) => (
                   <Img key={id} urls={thumbUrls(id)} onClick={() => setBox({ ids: r.photos, i })} />))}</div></td>
@@ -205,7 +236,7 @@ export default function Dashboard() {
                 <td style={{ textAlign: 'center' }}>
                   <input type="checkbox" checked={!!r.erp_keluar} title={r.erp_keluar_at ? fmt(r.erp_keluar_at) : ''} onChange={() => openFlag(r, 'erp_keluar')} />
                 </td>
-                <td><div className="acts"><button className="ed" onClick={() => openTin(r)}>Action</button><button className="del" onClick={() => { setDel({ id: r.id, photos: r.photos, label: `${r.item_code} · ${r.qty} · ${fmt(r.created_at)}` }); setPin(''); setDelErr('') }}>Hapus</button></div></td>
+                <td><div className="acts"><button className="ed" onClick={() => openTin(r)}>Action</button><button className="del" onClick={() => { setDel({ id: r.id, photos: r.photos, label: `${r.item_code} · ${nf(r.qty)} · ${fmt(r.created_at)}` }); setPin(''); setDelErr('') }}>Hapus</button></div></td>
               </tr>
             ))}
           </tbody>

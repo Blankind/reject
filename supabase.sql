@@ -5,7 +5,7 @@ create table rejects (
   warehouse text not null,
   item_code text not null,
   item_name text not null,
-  qty int not null check (qty > 0),
+  qty numeric(14,3) not null check (qty > 0),   -- desimal/float didukung
   keterangan text,
   photos text[] not null default '{}'              -- array ID file Google Drive
 );

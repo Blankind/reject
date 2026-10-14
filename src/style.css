@@ -57,3 +57,6 @@ th,td{padding:8px 6px;border-bottom:1px solid #eee;text-align:left;vertical-alig
 .chk{max-height:240px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px}
 .chk label{display:flex;align-items:center;gap:8px;margin:0;padding:6px 0;font-weight:500;font-size:13px}
 .chk input{width:auto;margin:0}
+
+.exp{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.exp select{width:auto;min-width:240px}

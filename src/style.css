@@ -61,3 +61,8 @@ th,td{padding:8px 6px;border-bottom:1px solid #eee;text-align:left;vertical-alig
 .exp{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
 .top5{max-height:236px;overflow-y:auto;margin-top:4px}
 .top5 th{position:sticky;top:0;background:#fff;z-index:1;box-shadow:0 1px 0 #eee}
+
+.sb{position:relative;margin-top:12px}
+.sb input{padding-right:38px}
+.sbx{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:0;border-radius:50%;background:#e5e7eb;color:#444;font-size:18px;line-height:28px;padding:0;cursor:pointer}
+.sbn{display:block;margin-top:6px;color:#777;font-size:12px}

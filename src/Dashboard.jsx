@@ -16,6 +16,9 @@ function Img({ urls, className, ...rest }) {
 
 const splitT = (s) => (s || '').split(/\s*[,;]\s*/).map((x) => x.trim()).filter(Boolean)
 
+// pencarian: huruf kecil, spasi rapi
+const norm = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+
 const iso = (d) => d.toISOString().slice(0, 10)
 const fmt = (s) => new Date(s).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'short', timeStyle: 'short' })
 
@@ -36,6 +39,7 @@ export default function Dashboard() {
   const [box, setBox] = useState(null) // { ids, i } -> popup foto
   const [opts, setOpts] = useState(TINDAKAN) // daftar tindakan: dari spreadsheet (kolom paling belakang), cadangan config.js
   const [tf, setTf] = useState('') // filter tindakan
+  const [q, setQ] = useState('') // kata kunci pencarian
   const [tin, setTin] = useState(null) // { id, label }
   const [tinSel, setTinSel] = useState([]) // opsi tercentang (boleh lebih dari 1)
   const [tinOther, setTinOther] = useState('')
@@ -141,11 +145,20 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', onKey)
   }, [box])
 
+  // index teks per baris, dibuat sekali tiap data berubah (bukan tiap ketikan)
+  const indexed = useMemo(() => rows.map((r) => ({
+    r,
+    h: norm([r.item_code, r.item_name, r.keterangan, r.tindakan, r.warehouse, fmt(r.created_at)].join(' ')),
+  })), [rows])
+
   const shown = useMemo(() => {
-    if (!tf) return rows
-    if (tf === '__none') return rows.filter((r) => !r.tindakan)
-    return rows.filter((r) => splitT(r.tindakan).some((t) => t.toLowerCase() === tf.toLowerCase()))
-  }, [rows, tf])
+    const toks = norm(q).split(' ').filter(Boolean) // semua kata harus cocok (AND)
+    return indexed.filter(({ r, h }) => {
+      if (tf === '__none' && r.tindakan) return false
+      if (tf && tf !== '__none' && !splitT(r.tindakan).some((t) => t.toLowerCase() === tf.toLowerCase())) return false
+      return toks.every((t) => h.includes(t))
+    }).map(({ r }) => r)
+  }, [indexed, tf, q])
 
   const { total, items, byWh, byItem } = useMemo(() => {
     const w = {}, i = {}
@@ -179,6 +192,12 @@ export default function Dashboard() {
               {opts.map((t) => <option key={t}>{t}</option>)}
             </select></div>
         </div>
+        <div className="sb">
+          <input type="search" placeholder="Cari kode item, nama item, keterangan, tindakan, warehouse..." value={q}
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+          {q && <button className="sbx" title="Hapus pencarian" onClick={() => setQ('')}>×</button>}
+        </div>
+        {q.trim() && <small className="sbn">{shown.length} dari {rows.length} data cocok dengan "{q.trim()}"</small>}
         <div className="kpi" style={{ marginTop: 14 }}>
           <div><b>{nf(total)}</b><span>Total Qty Reject</span></div>
           <div><b>{shown.length}</b><span>Jumlah Input</span></div>
@@ -187,7 +206,7 @@ export default function Dashboard() {
         </div>
         <div className="exp">
           <button className="btn dark" disabled={exBusy || loading} onClick={doExport}>{exBusy ? 'Memproses...' : 'Export Excel'}</button>
-          <small>Sesuai filter di atas ({shown.length} baris) · foto berupa link Drive</small>
+          <small>Sesuai filter & pencarian ({shown.length} baris) · foto berupa link Drive</small>
         </div>
         {exMsg && <div className={'msg ' + (exMsg.err ? 'err' : 'ok')}>{exMsg.t}</div>}
       </div>
@@ -236,6 +255,7 @@ export default function Dashboard() {
                 <td><div className="acts"><button className="ed" onClick={() => openTin(r)}>Action</button><button className="del" onClick={() => { setDel({ id: r.id, photos: r.photos, label: `${r.item_code} · ${nf(r.qty)} · ${fmt(r.created_at)}` }); setPin(''); setDelErr('') }}>Hapus</button></div></td>
               </tr>
             ))}
+            {!loading && !shown.length && <tr><td colSpan={11} style={{ textAlign: 'center', color: '#888', padding: 20 }}>Data tidak ditemukan.</td></tr>}
           </tbody>
         </table>
       </div>
